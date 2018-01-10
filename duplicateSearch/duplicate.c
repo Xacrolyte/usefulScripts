@@ -1,6 +1,7 @@
 #include<stdio.h>
 #include<stdlib.h>
 #include<string.h>
+
 char records[500][20];
 void checkUnique(int recording)
 {
