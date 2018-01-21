@@ -3,65 +3,74 @@
 #include <string.h>
 #include <math.h>
 
-long msgDigest[5], key[4];
+uint32_t msgDigest[5], key[4], A, B, C, D, E;
+#define SHA1CircularShift(bits,word) \
+                (((word) << (bits)) | ((word) >> (32-(bits))))
 
-long int modulo_Euclidian(long int a, long int b) {
-  int m = a % b;
-  if (m < 0)
-    m = (b < 0) ? m - b : m + b;
-  return m;
-}
-
-void printMessageGoingToBeProcessed(long int * message) {
+void printMessageGoingToBeProcessed(uint32_t * message) {
     printf("\n");
     int iterator = 0;
         while (iterator<15) {
-            printf("%08lx ",message[iterator++]);
-            printf("%08lx ",message[iterator++]);
-            printf("%08lx ",message[iterator++]);
-            printf("%08lx \n",message[iterator++]);
+            printf("%08x ",message[iterator++]);
+            printf("%08x ",message[iterator++]);
+            printf("%08x ",message[iterator++]);
+            printf("%08x \n",message[iterator++]);
         }
 }
 
-void commonAlgorithm(long int hashResult, long int word, long int key) {
-    hashResult = modulo_Euclidian((hashResult + msgDigest[4]), 4294967296); // 2^32 = 4294967296
-    hashResult = modulo_Euclidian((hashResult + msgDigest[1]<<5), 4294967296);
-    hashResult = modulo_Euclidian((hashResult + word), 4294967296);
-    hashResult = modulo_Euclidian((hashResult + key), 4294967296);
-    msgDigest[4] = msgDigest[3];
-    msgDigest[3] = msgDigest[2];
-    msgDigest[2] = msgDigest[1]<<30;
-    msgDigest[1] = msgDigest[0];
-    msgDigest[0] = hashResult;
+void commonAlgorithm(uint32_t hashResult, uint32_t word, uint32_t key) {
+    hashResult = hashResult + key + SHA1CircularShift(5, A) + word + E;
+    E = D;
+    D = C;
+    C = SHA1CircularShift(30,B);
+    B = A;
+    A = hashResult;
 }
 
-void messageHashing(long int * message) {
+void messageHashing(uint32_t * message) {
     //Now i have the message, Time to hash it.
-    int iterator;
-    long int hashResult;
-    for (iterator=0;iterator<=79;iterator++) {
-        if(iterator >=0 && iterator <= 19) {
-            hashResult = ((msgDigest[1] & msgDigest[2]) | ((~msgDigest[1]) & msgDigest[3]));
-            commonAlgorithm(hashResult, message[iterator%16],key[0]);
-        } else if(iterator >=20 && iterator <= 39) {
-            hashResult = (msgDigest[1] ^ msgDigest[2] ^ msgDigest[3]);
-            commonAlgorithm(hashResult, message[iterator%16],key[1]);
-        } else if(iterator >=40 && iterator <= 59) {
-            hashResult = ((msgDigest[1] & msgDigest[2]) | (msgDigest[1] & msgDigest[3]) | (msgDigest[2] & msgDigest[3]));
-            commonAlgorithm(hashResult, message[iterator%16],key[2]);
-        } else if(iterator >=60 && iterator <= 79) {
-            hashResult = (msgDigest[1] ^ msgDigest[2] ^ msgDigest[3]);
-            commonAlgorithm(hashResult, message[iterator%16],key[3]);
+    // Initiate
+        int iterator;
+        uint32_t hashResult, word[80];
+        A = msgDigest[0];
+        B = msgDigest[1];
+        C = msgDigest[2];
+        D = msgDigest[3];
+        E = msgDigest[4];
+    // Calculate for the message
+        for (iterator=0;iterator<=79;iterator++) {
+            if (iterator < 16)
+                word[iterator] = message[iterator];
+            else
+                word[iterator] = SHA1CircularShift(1,(word[iterator-3] ^ word[iterator-8] ^ word[iterator-14] ^ word[iterator-16]));
+            if(iterator >=0 && iterator <= 19) {
+                hashResult = ((B & C) | ((~B) & D));
+                commonAlgorithm(hashResult, word[iterator], key[0]);
+            } else if (iterator >=20 && iterator <= 39) {
+                hashResult = ((B ^ C) ^ D);
+                commonAlgorithm(hashResult, word[iterator], key[1]);
+            } else if (iterator >=40 && iterator <= 59) {
+                hashResult = ((B & C) | (B & D) | (C & D));
+                commonAlgorithm(hashResult, word[iterator], key[2]);
+            } else if (iterator >=60 && iterator <= 79) {
+                hashResult = ((B ^ C) ^ D);
+                commonAlgorithm(hashResult, word[iterator], key[3]);
+            }
         }
-    }
+    // Add the values to the msgDigest.
+        msgDigest[0] += A;
+        msgDigest[1] += B;
+        msgDigest[2] += C;
+        msgDigest[3] += D;
+        msgDigest[4] += E;
 }
 
 void main() {
     // Initiate
     char secureHashInput[500];
-    long message[15];
+    uint32_t message[15];
     int charsProcessed=0,charsInMessage, iterator;
-    unsigned long long inputLenght;
+    uint64_t inputLenght;
     // Initial Key Values
     key[0] = 0x5A827999;
     key[1] = 0x6ED9EBA1;
@@ -74,10 +83,8 @@ void main() {
     msgDigest[3] = 0x10325476;
     msgDigest[4] = 0xC3D2E1F0;
     // SHA1 Process
-        // Take Input Fix me: Remove strcpy and put take input!
-        strcpy(secureHashInput,"abcde");
-        // printf("Enter the string to be hashed: ");
-        // fgets (secureHashInput, 500, stdin);
+        printf("Enter the string to be hashed: ");
+        fgets (secureHashInput, 500, stdin);
         // Calculate SHA1
         inputLenght = 8*(strlen(secureHashInput));
         message[14] = inputLenght/pow(2,32);
@@ -85,7 +92,7 @@ void main() {
         message[15] = inputLenght/pow(2,32);
         while (charsProcessed < strlen(secureHashInput)) { // This while loop will divide input to 32 bit messages
             for (charsInMessage=0;charsInMessage<=13;charsInMessage++) { // Reseting the entire message to 0 so that no previous value remains
-                message[charsInMessage] = 0x00*pow(2,24) + 0x00*pow(2,16) + 0x00*pow(2,8) + 0x00;
+                message[charsInMessage] = 0;
             }
             for (charsInMessage=0;charsInMessage<=13;charsInMessage++) { // Fill in the words for this message
                 if(charsProcessed == strlen(secureHashInput)) { // All chars are processed
@@ -116,5 +123,5 @@ void main() {
             messageHashing(message);
         }
     // Print the SHA1 Message Digest
-    printf("\n%lx %lx %lx %lx %lx is the SHA1 Message Digest.\n",msgDigest[0],msgDigest[1],msgDigest[2],msgDigest[3],msgDigest[4]);
+    printf("\n%08x%08x%08x%08x%08x is the SHA1 Message Digest.\n",msgDigest[0],msgDigest[1],msgDigest[2],msgDigest[3],msgDigest[4]);
 }
